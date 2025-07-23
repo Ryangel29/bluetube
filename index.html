@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BlueTube</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <style>
+    body {
+      margin: 0;
+      background-color: #000;
+      color: #1e90ff;
+      font-family: 'Segoe UI', sans-serif;
+      display: grid;
+      grid-template-columns: 220px 1fr;
+    }
+    header {
+      grid-column: 1 / -1;
+      background: linear-gradient(90deg, #000 0%, #1e90ff 100%);
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header img {
+      height: 40px;
+      margin-right: 10px;
+    }
+    header h1 {
+      font-size: 24px;
+      color: white;
+      display: flex;
+      align-items: center;
+    }
+    nav {
+      padding: 20px;
+      background-color: #0a0a0a;
+      border-right: 1px solid #1e90ff;
+    }
+    main {
+      padding: 20px;
+    }
+    input, button {
+      display: block;
+      margin: 10px 0;
+      padding: 8px;
+      border-radius: 4px;
+      border: none;
+      background-color: #111;
+      color: #1e90ff;
+    }
+    button:hover {
+      background-color: #1e90ff;
+      color: black;
+      transition: 0.3s;
+    }
+    .video-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .video-card {
+      background-color: #111;
+      padding: 10px;
+      border-radius: 6px;
+      transition: transform 0.3s ease;
+    }
+    .video-card:hover {
+      transform: scale(1.02);
+      background: #1e90ff22;
+    }
+    .video-card img {
+      width: 100%;
+      border-radius: 6px;
+    }
+    #video-player {
+      display: none;
+      position: fixed;
+      top: 10%;
+      left: 20%;
+      width: 60%;
+      background: #111;
+      border-radius: 10px;
+      padding: 20px;
+      z-index: 1000;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>
+      <img src="https://res.cloudinary.com/dwvxigj1d/image/upload/v1699999999/bluetube_lion_logo.png" alt="BlueTube Logo" />
+      BlueTube
+    </h1>
+    <div id="userDisplay">Welcome, Guest</div>
+  </header>
+
+  <nav>
+    <input type="email" id="email" placeholder="Email" />
+    <input type="password" id="password" placeholder="Password" />
+    <button onclick="signup()">Signup</button>
+    <button onclick="login()">Login</button>
+    <button onclick="logout()">Logout</button>
+    <input type="file" id="videoUpload" accept="video/*" />
+    <button onclick="uploadVideo()">Upload Video</button>
+  </nav>
+
+  <main>
+    <input type="search" id="search" placeholder="Search..." />
+    <div class="video-grid" id="videoGrid"></div>
+  </main>
+
+  <div id="video-player">
+    <h2 id="player-title"></h2>
+    <video id="player-video" width="100%" controls></video>
+    <h4>Comments</h4>
+    <div id="commentList"></div>
+    <input type="text" id="commentInput" placeholder="Add comment..." />
+    <button onclick="postComment()">Post</button>
+    <button onclick="closeVideo()">Close</button>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyA1TXp-q2br7BhL-o-54LG77sWTXr4Z-Tu4",
+      authDomain: "bluetube-d0fd7.firebaseapp.com",
+      projectId: "bluetube-d0fd7",
+      storageBucket: "bluetube-d0fd7.appspot.com",
+      messagingSenderId: "183229789495",
+      appId: "1:183229789495:web:57712720f3f3203f956b2"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    let currentUser = null;
+    let currentVideoId = "";
+
+    auth.onAuthStateChanged(user => {
+      currentUser = user;
+      userDisplay.innerText = user ? `Welcome, ${user.email}` : "Welcome, Guest";
+    });
+
+    function signup() {
+      auth.createUserWithEmailAndPassword(email.value, password.value).catch(err => alert(err.message));
+    }
+
+    function login() {
+      auth.signInWithEmailAndPassword(email.value, password.value).catch(err => alert(err.message));
+    }
+
+    function logout() {
+      auth.signOut();
+    }
+
+    function uploadVideo() {
+      const file = videoUpload.files[0];
+      if (!file || !currentUser) return alert("Login and select a file first.");
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", "SPACEDAD");
+      fetch("https://api.cloudinary.com/v1_1/dwvxigj1d/video/upload", {
+        method: "POST",
+        body: formData
+      })
+      .then(res => res.json())
+      .then(data => {
+        const id = data.public_id;
+        const url = data.secure_url;
+        const thumbnail = `https://res.cloudinary.com/dwvxigj1d/video/upload/${id}.jpg`;
+        const card = document.createElement("div");
+        card.className = "video-card";
+        card.onclick = () => openVideo(file.name, url, id);
+        card.innerHTML = `<img src="${thumbnail}" /><h3>${file.name}</h3>`;
+        videoGrid.appendChild(card);
+      });
+    }
+
+    function openVideo(title, url, id) {
+      currentVideoId = id;
+      playerTitle.innerText = title;
+      playerVideo.src = url;
+      videoPlayer.style.display = "block";
+      loadComments(id);
+    }
+
+    function closeVideo() {
+      videoPlayer.style.display = "none";
+      playerVideo.src = "";
+      commentList.innerHTML = "";
+    }
+
+    function postComment() {
+      if (!currentUser || !commentInput.value) return;
+      db.collection("comments").add({
+        videoId: currentVideoId,
+        user: currentUser.email,
+        text: commentInput.value,
+        time: firebase.firestore.FieldValue.serverTimestamp()
+      }).then(() => {
+        commentInput.value = "";
+        loadComments(currentVideoId);
+      });
+    }
+
+    function loadComments(id) {
+      db.collection("comments").where("videoId", "==", id)
+        .orderBy("time", "desc")
+        .get()
+        .then(snapshot => {
+          commentList.innerHTML = "";
+          snapshot.forEach(doc => {
+            const d = doc.data();
+            const p = document.createElement("p");
+            p.innerText = `${d.user}: ${d.text}`;
+            commentList.appendChild(p);
+          });
+        });
+    }
+
+    search.addEventListener("input", () => {
+      const term = search.value.toLowerCase();
+      document.querySelectorAll(".video-card").forEach(card => {
+        const title = card.querySelector("h3").innerText.toLowerCase();
+        card.style.display = title.includes(term) ? "block" : "none";
+      });
+    });
+  </script>
+</body>
+</html>
